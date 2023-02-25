@@ -1,0 +1,36 @@
+{
+    "name": "procomputer/pcc-web-application-framework",
+    "type": "library",
+    "description": "Pro Computer's Simple PHP Web Application Framework.",
+    "keywords": [
+        "application",
+        "composer",
+        "framework",
+        "html",
+        "package",
+        "php",
+        "procomputer",
+        "web"
+    ],
+    "license": "MIT",
+    "authors": [
+        {"name": "James R. Steel", "email": "jim-steel@pccglobal.com"}
+    ],
+    "require": {
+        "php": "^7.4 || ^8.0",
+        "procomputer/pcc-lib": "dev-master"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "1.8.10",
+        "phpstan/phpstan-strict-rules": "^1.4",
+        "phpunit/phpunit": "9.5.25",
+        "psalm/plugin-phpunit": "0.17.0",
+        "squizlabs/php_codesniffer": "3.7.1"
+    },
+    "autoload": {
+        "psr-4": {"Procomputer\\WebApplicationFramework\\": "src"}
+    },
+    "autoload-dev": {
+        "psr-4": { "Procomputer\\WebApplicationFramework\\Tests\\": "tests" }
+    }
+}
