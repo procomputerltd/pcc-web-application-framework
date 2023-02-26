@@ -40,8 +40,62 @@ class Http {
         return filter_input($filterType, $name) ;
     }
     
-    public function getCookie(string $name) {
-       return filter_input(INPUT_COOKIE, $name) ;
+    /**
+     * Returns the current url.
+     * @param bool $includeQuery Include the query string;
+     * @return string Returns the current url.
+     */
+    public function url(bool $includeQuery = false) {
+        $protocol = 'http';
+        $proto = filter_input(INPUT_SERVER, 'REQUEST_SCHEME');
+        if(is_string($proto) && strlen($proto = trim($proto, "/ \t"))) {
+            $proto = strtolower($proto);
+            $port = filter_input(INPUT_SERVER, 'SERVER_PORT');
+            if('https' === $proto || is_numeric($port) && 443 === intval($port)) {
+                $protocol .= 's'; // SSL
+            }
+        }
+        else {
+            $proto = filter_input(INPUT_SERVER, 'HTTPS');
+            if(is_string($proto) && strlen($proto = strtolower(trim($proto, "/ \t")))) {
+                if(is_numeric($proto) && intval($proto) || 'on' === $proto || 'true' === $proto || '1' === $proto) {
+                    $protocol .= 's'; // SSL
+                }
+            }
+        }
+        $url = $protocol . '://';
+        $host = filter_input(INPUT_SERVER, 'HTTP_HOST');
+        if(is_string($host) && strlen($host = trim($host, "/ \t"))) {
+            $url .= $host;
+        }
+        $scriptName = filter_input(INPUT_SERVER, 'SCRIPT_NAME');
+        if(is_string($scriptName) && strlen($scriptName = trim($scriptName, "/ \t"))) {
+            $uri = $scriptName;
+        }
+        else {
+            $reqUri = filter_input(INPUT_SERVER, 'REQUEST_URI');
+            if(is_string($reqUri) && strlen($reqUri = trim($reqUri, "/ \t"))) {
+                $uri = parse_url($reqUri, PHP_URL_PATH);
+            }
+            else {
+                $uri = null;
+            }
+        }
+        if($uri) {
+            $url .= '/' . $uri;
+        }
+        if($includeQuery) {
+            $query = filter_input(INPUT_SERVER, 'QUERY_STRING');
+            if(is_string($query) && strlen($query = ltrim(trim($query), '?&'))) {
+                $url .= '?' . $query;
+            }
+        }
+        return $url;
+    }
+
+    public function getCookie(string $name, mixed $default = null) {
+       $value = filter_input(INPUT_COOKIE, $name) ;
+       return (null === $value) ? $default : $value;
     }
     
     /**
