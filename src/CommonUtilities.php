@@ -12,6 +12,12 @@ namespace Procomputer\WebApplicationFramework;
  * for more details.
  */
 use Procomputer\Pcclib\Html\Div;
+use Procomputer\Pcclib\Html\Span;
+use Procomputer\Pcclib\Html\Button;
+use Procomputer\Pcclib\Html\Element;
+
+use JsonSerializable;
+use Traversable;
 
 trait CommonUtilities {
     
@@ -87,8 +93,8 @@ trait CommonUtilities {
         return $this->_alerts;
     }
 
-    public function getAlertsHtml() {
-        /*    
+    public function getAlertsHtml(int $cssFrameworkRelease = 5) {
+        /*
         alert alert-primary"    role="alert">
         alert alert-secondary"  role="alert">
         alert alert-success"    role="alert">
@@ -97,34 +103,47 @@ trait CommonUtilities {
         alert alert-info"       role="alert">
         alert alert-light"      role="alert">
         alert alert-dark"       role="alert">    
-        */
+
+        <div class="alert alert-dismissible alert-warning" role="alert">
+            <strong><?= ucfirst($alert) ?></strong><br />
+            <button type="button" class="btn-close close" data-bs-dismiss="alert" data-dismiss="alert">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            Message here
+        </div>
+        */        
         $messageList = [];
         foreach($this->_alerts as $class => $classMessages) {
-            $class = trim($class);
-            if(preg_match('/^alert-/i', $class)) {
-                $class = 'alert ' . $class;
-            }
-            elseif(! preg_match('/^alert[ \t]+alert-/i', $class)) {
-                $class = 'alert alert-' . $class;
-            }
+            $trimmed = trim($class);
             if(is_array($classMessages)) {
                 foreach($classMessages as $msg) {
-                    $messageList[$class][] = strval($msg);
+                    $messageList[$trimmed][] = strval($msg);
                 }
             }
             else {
                 $messageList['alert alert-danger'][] = strval($classMessages);
             }
+            $labels[$trimmed] = ucfirst($class);
         }
         if(! count($messageList)) {
             return '';
         }
         ksort($messageList);
-        $attributes = ['role' => 'alert'];
-        $elm = new Div();
+        $element = new Element();
+        $span = new Span();
+        if($cssFrameworkRelease < 5) {
+            $closeX = $span->render('&times;', ['aria-hidden' => 'true']);
+        }
+        else {
+            $closeX = '';
+        }
+        $button = new Button();
+        $buttonHtml = $button->render($closeX, ['type' => 'button',  'class' => 'btn-close close',  'data-bs-dismiss' => 'alert',  'data-dismiss' => 'alert']);
+        $div = new Div();
         foreach($messageList as $class => $msgList) {
-            $attributes['class'] = $class;
-            $messageList[$class] = $elm->render(implode("<br>\n", $msgList), $attributes);
+            $alert = $element->render('strong', $labels[$class], [], true) . '<br />';
+            $attributes = ['class' => "alert alert-{$class} alert-dismissible", 'role' => 'alert'];
+            $messageList[$class] = $div->render($alert . $buttonHtml . implode("<br>\n", $msgList), $attributes);
         }
         return implode("\n", $messageList);
     }
@@ -220,19 +239,22 @@ trait CommonUtilities {
     {
         if (is_array($items)) {
             return $items;
-        } elseif ($items instanceof Enumerable) {
-            return $items->all();
-        } elseif ($items instanceof Arrayable) {
-            return $items->toArray();
-        } elseif ($items instanceof Jsonable) {
-            return json_decode($items->toJson(), true);
         } elseif ($items instanceof JsonSerializable) {
             return (array) $items->jsonSerialize();
         } elseif ($items instanceof Traversable) {
             return iterator_to_array($items);
         }
-
         return (array) $items;
     }
 
+    protected function _mergeAttributes(array $attributes, array $newAttributes) {
+        if(isset($newAttributes['class'])) {
+            $str = trim(implode(' ', $this->_getArrayableItems($newAttributes['class'])));
+            if(strlen($str)) {
+                $attributes['class'] = implode(' ', [trim($attributes['class'] ?? ''), $str]);
+            }
+            unset($newAttributes['class']);
+        }
+        return array_merge($attributes, $newAttributes);
+    }
 }
