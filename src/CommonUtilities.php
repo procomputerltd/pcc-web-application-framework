@@ -15,13 +15,20 @@ use Procomputer\Pcclib\Html\Div;
 use Procomputer\Pcclib\Html\Span;
 use Procomputer\Pcclib\Html\Button;
 use Procomputer\Pcclib\Html\Element;
+use Procomputer\Pcclib\Messages\Messages;
+use Procomputer\Pcclib\Messages\Message;
+use Procomputer\Pcclib\Messages\MessageStore;
 
 use JsonSerializable;
 use Traversable;
+use Throwable;
 
 trait CommonUtilities {
     
+    use Messages;
+    
     public $indent = 0;
+    public $cssFrameworkRelease = 5;
 
     protected $_alertClasses = [
         'primary',
@@ -35,75 +42,28 @@ trait CommonUtilities {
     ];
     
     /**
-     * 
-     * @var array Alert class=>[message] list.
+     * Get alert dialog box HTML.
+     * @return string
      */
-    protected $_alerts = [];
-    
-    /**
-     * Add an alert message or multiple alert message.
-     * @param atring|array  $msg   Alerts to add.
-     * @param string        $class Alerts Bootstrap class like 'danger'
-     * @return $this
-     */
-    public function addAlert($msg, $class = 'warning') {
-        /*    
-        alert alert-primary"    role="alert">
-        alert alert-secondary"  role="alert">
-        alert alert-success"    role="alert">
-        alert alert-danger"     role="alert">
-        alert alert-warning"    role="alert">
-        alert alert-info"       role="alert">
-        alert alert-light"      role="alert">
-        alert alert-dark"       role="alert">    
-        */
-        if(is_array($msg)) {
-            if(! empty($msg)) {
-                foreach($msg as $k => $m) {
-                    foreach((array)$m as $s) {
-                        $this->_addAlertByClass($s, is_int($k) ? $class : $k);
-                    }
-                }
-            }
-            return $this;
-        }
-        return $this->_addAlertByClass(strval($msg), $class);
+    public function getAlertsHtml() : string {
+        return $this->getMessagesHtml($this->getMessages());
     }
-
+        
     /**
-     * Add an alert message.
-     * @param atring|array  $msg
-     * @param string        $class Alerts Bootstrap class like 'danger'
-     * @return $this
+     * Returns HTML messages dialog box.
+     * @param array $messages
+     * @return string
      */
-    private function _addAlertByClass($msg, $class) {
-        $class = strtolower(strval($class));
-        if(false === array_search($class, $this->_alertClasses)) {
-            $class = reset($this->_alertClasses);
-        }
-        $this->_alerts[$class][] = $msg;
-        return $this;
-    }
-    
-    /**
-     * Return alerts set by addAlert()
-     * @return array
-     */
-    public function getAlerts() {
-        return $this->_alerts;
-    }
-
-    public function getAlertsHtml(int $cssFrameworkRelease = 5) {
-        /*
-        alert alert-primary"    role="alert">
-        alert alert-secondary"  role="alert">
-        alert alert-success"    role="alert">
-        alert alert-danger"     role="alert">
-        alert alert-warning"    role="alert">
-        alert alert-info"       role="alert">
-        alert alert-light"      role="alert">
-        alert alert-dark"       role="alert">    
-
+    public function getMessagesHtml(array $messages) : string {
+        /* alert alert-primary" role="alert">
+            primary
+            secondary
+            success
+            danger
+            warning
+            info
+            light
+            dark
         <div class="alert alert-dismissible alert-warning" role="alert">
             <strong><?= ucfirst($alert) ?></strong><br />
             <button type="button" class="btn-close close" data-bs-dismiss="alert" data-dismiss="alert">
@@ -112,42 +72,94 @@ trait CommonUtilities {
             Message here
         </div>
         */        
-        $messageList = [];
-        foreach($this->_alerts as $class => $classMessages) {
-            $trimmed = trim($class);
-            if(is_array($classMessages)) {
-                foreach($classMessages as $msg) {
-                    $messageList[$trimmed][] = strval($msg);
-                }
-            }
-            else {
-                $messageList['alert alert-danger'][] = strval($classMessages);
-            }
-            $labels[$trimmed] = ucfirst($class);
-        }
-        if(! count($messageList)) {
-            return '';
-        }
-        ksort($messageList);
         $element = new Element();
-        $span = new Span();
-        if($cssFrameworkRelease < 5) {
-            $closeX = $span->render('&times;', ['aria-hidden' => 'true']);
-        }
-        else {
-            $closeX = '';
-        }
         $button = new Button();
-        $buttonHtml = $button->render($closeX, ['type' => 'button',  'class' => 'btn-close close',  'data-bs-dismiss' => 'alert',  'data-dismiss' => 'alert']);
         $div = new Div();
-        foreach($messageList as $class => $msgList) {
-            $alert = $element->render('strong', $labels[$class], [], true) . '<br />';
-            $attributes = ['class' => "alert alert-{$class} alert-dismissible", 'role' => 'alert'];
-            $messageList[$class] = $div->render($alert . $buttonHtml . implode("<br>\n", $msgList), $attributes);
+        $span = new Span();
+        $closeX = ($this->cssFrameworkRelease < 5) ? $span->render('&times;', ['aria-hidden' => 'true']) : '';
+        $buttonHtml = $button->render($closeX, ['type' => 'button',  'class' => 'btn-close close',  'data-bs-dismiss' => 'alert',  'data-dismiss' => 'alert']);
+        $messageList = [];
+        foreach($messages as $class => $alerts) {
+            foreach($alerts as $title => $messages) {
+                $alert = $element->render('strong', $title, [], true) . '<br />';
+                $attributes = ['class' => "alert alert-{$class} alert-dismissible", 'role' => 'alert'];
+                $messageList[] = $div->render($alert . $buttonHtml . implode("<br>\n", (array)$messages), $attributes);
+            }
         }
         return implode("\n", $messageList);
     }
         
+    /**
+     * Add an alert message or multiple alert messages to the message queue.
+     * @param string|array  $messages   Messages to add.
+     * @param string        $alertClass (optional) Alerts Bootstrap class like 'warning', 'danger'
+     * @param string        $title      (optional) Alert title like 'NOTICE:'. Unspecified uses the alert class.
+     * @return $this
+     */
+    public function enqueueMessage(string|array|Traversable|Throwable|Message $messages, string $alertClass = 'warning', string $title = '') {
+        $messageStore = new MessageStore();
+        $key = md5(get_class($this));
+        $sessval = $_SESSION[$key] ?? null;
+        if(! is_array($sessval)) {
+            $sessval = [];
+        }
+        else {
+            $messageStore->addMessage($sessval);
+        }
+        $messageStore->addMessage($messages, $alertClass, $title);
+        
+        $_SESSION[$key] = $messageStore->toArray();
+        return $this;
+    }
+    
+    /**
+     * Returns messages in the message queue.
+     * @return MessageStore
+     */
+    public function getEnqueuedMessages(bool $clearEnqueuedMessages = false) : MessageStore {
+        $messageStore = new MessageStore();
+        $key = md5(get_class($this));
+        $sessval = $_SESSION[$key] ?? null;
+        if(! is_array($sessval)) {
+            $sessval = [];
+        }
+        else {
+            $messageStore->addMessage($sessval);
+        }
+        if($clearEnqueuedMessages) {
+            unset($_SESSION[$key]);
+        }
+        return $messageStore;
+    }
+    
+    /**
+     * Return enqueued messages dialog box HTML.
+     * @return string
+     */
+    public function getEnqueuedMessagesHtml(bool $clearEnqueuedMessages = true) : string {
+        return $this->getMessagesHtml($this->getEnqueuedMessages($clearEnqueuedMessages));
+    }
+        
+    /**
+     * Return ALL enqueued and regular messages dialog box HTML.
+     * @return string
+     */
+    public function getAllAlertsHtml(bool $clearEnqueuedMessages = true) : string {
+        $messages = $this->messageStore()->merge($this->getEnqueuedMessages($clearEnqueuedMessages))->toArray();
+        // $storage[$class][$title][] = $messages;
+        foreach($messages as $class => $titles) {
+            foreach($titles as $title => $msg) {
+                if(! isset($messages[$class][$title])) {
+                    $messages[$class][$title] = (array)$msg;
+                }
+                else {
+                    array_merge($messages[$class][$title], (array)$msg);
+                }
+            }
+        }
+        return $this->getMessagesHtml($messages);
+    }
+    
     /**
      * 
      * @param string        $content
@@ -174,9 +186,9 @@ trait CommonUtilities {
      *
      * @return string Returns the rendered script.
      */
-    public function renderPhpFile($file, array $vars = []) {
+    public function renderPhpFile(string $file, array $vars = []) {
         if(! is_file($file)) {
-            throw new InvalidArgumentException("'file' parameter is not a file");
+            throw new \InvalidArgumentException("'file' parameter is not a file");
         }
         extract($vars);
 
@@ -195,7 +207,7 @@ trait CommonUtilities {
         return ob_get_clean();
     }
 
-    public function addLastPhpErrorAlert($default = 'unknown error') {
+    public function addLastPhpErrorAlert(string $default = 'unknown error') {
         $msg = $this->getLastPhpErrorMessage($default);
         $this->addAlert($msg, 'danger');
         return $this;
@@ -206,7 +218,7 @@ trait CommonUtilities {
      * @param string $default
      * @return string
      */
-    public function getLastPhpErrorMessage($default = 'unknown error') {
+    public function getLastPhpErrorMessage(string $default = 'unknown error') {
         /*  
         [type] => 8
         [message] => Undefined variable: a
@@ -235,8 +247,7 @@ trait CommonUtilities {
      * @param  mixed  $items
      * @return array
      */
-    protected function _getArrayableItems($items)
-    {
+    protected function _getArrayableItems(mixed $items) {
         if (is_array($items)) {
             return $items;
         } elseif ($items instanceof JsonSerializable) {
@@ -245,16 +256,5 @@ trait CommonUtilities {
             return iterator_to_array($items);
         }
         return (array) $items;
-    }
-
-    protected function _mergeAttributes(array $attributes, array $newAttributes) {
-        if(isset($newAttributes['class'])) {
-            $str = trim(implode(' ', $this->_getArrayableItems($newAttributes['class'])));
-            if(strlen($str)) {
-                $attributes['class'] = implode(' ', [trim($attributes['class'] ?? ''), $str]);
-            }
-            unset($newAttributes['class']);
-        }
-        return array_merge($attributes, $newAttributes);
     }
 }

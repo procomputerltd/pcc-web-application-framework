@@ -22,9 +22,9 @@ class FormHelper {
      * Constructor
      * @param array $options (optional)
      */
-    public function __construct($options = null) {
+    public function __construct(array $options = []) {
         if(null!== $options) {
-            $options = array_change_key_case((array)$options);
+            $options = array_change_key_case($options);
             foreach($options as $k => $v) {
                 $this->$k = $v;
             }
@@ -36,7 +36,7 @@ class FormHelper {
      * @param stdClass $attributes      Element attributes object.
      * @param stdClass $labelAttributes (optional) Label attributes object.
      */
-    public function formatFormElements(stdClass $attributes, stdClass $labelAttributes = null) {
+    public function formatFormElements(\stdClass $attributes, \stdClass $labelAttributes = null) {
         $type = $attributes->type ?? null;
         if(Types::isBlank($type)) {
             $type = 'text';

@@ -19,6 +19,7 @@ use Procomputer\Pcclib\Html\Form\Submit;
 
 use Procomputer\WebApplicationFramework\Form\FormHelper;
 use Procomputer\WebApplicationFramework\Form\Select;
+use Procomputer\WebApplicationFramework\Upload;
 
 class FormBuilder {
 
@@ -28,8 +29,6 @@ class FormBuilder {
     public $form = null;
 
     public $options = [];
-
-    public $debugMode = false;
 
     protected $_folderBrowser;
 
@@ -44,9 +43,9 @@ class FormBuilder {
     protected $_formHelper = null;
     
     /**
-     * Constructour
+     * Constructor
      * @param stdClass|array  $formDefinition (optional) If null you must use setFormdefinition() or init()
-     * @param array           $options        (optional)
+     * @param array           $options        (optional) Options
      */
     public function __construct($formDefinition = null, array $options = []) {
         $lcOptions = array_change_key_case($options);
@@ -56,6 +55,81 @@ class FormBuilder {
         }
     }
 
+    /**
+     * Returns a value from the '_properties' array referenced by '$name'.
+     * @param string $name Property key name.
+     * @return mixed
+     * @throws \RuntimeException
+     */
+    public function __get(string $name) : mixed {
+        if(! is_object($this->form)) {
+            $msg = "\$this->form property is not initialized";
+        }
+        elseif(isset($this->form->elements) && isset($this->form->elements[$name])) {
+            return $this->form->elements[$name];
+        }
+        elseif(isset($this->form->$name)) {
+            return $this->form->$name;
+        }
+        else {
+            $var = Types::getVarType($name);
+            $msg = "property/element '{$var}' not found";
+        }
+        $trace =  debug_backtrace();
+        if(isset($trace[0]) && isset($trace[0]['file'])) {
+            $file = $trace[0]['file'];
+            if(! empty($file)) {
+                $msg .= ' in file ' . $file;
+                if(! empty($trace[0]['line'])) {
+                    $msg .= ' line ' . $trace[0]['line'];
+                }
+            }
+        }
+        throw new \RuntimeException($msg, 255);
+        // throw new \RuntimeException($msg);
+    }
+
+    /**
+     * Sets a value in the '_properties' array referenced by '$name'.
+     * @param string $name Property key name.
+     * @param mixed  $val  Property value.
+     * @return $this
+     * @throws \RuntimeException
+     */
+    public function __set(string $name, mixed $val) {
+        if(! is_object($this->form)) {
+            $msg = "\$this->form property is not initialized";
+        }
+        elseif(isset($this->form->elements) && isset($this->form->elements[$name])) {
+            $this->form->elements[$name] = $val;
+            return $this;
+        }
+        else {
+            $var = Types::getVarType($name);
+            $msg = "property '{$var}' not found";
+        }
+        throw new \RuntimeException($msg);
+    }
+
+    /**
+     * Returns rendered element HTML elements sorted by type.
+     * @param array $sortBy (optional) Order elements by these types.
+     * @return array
+     */
+    public function getElementsSortedByType(array $sortBy = []) {
+        if(empty($sortBy)) {
+            // default = text, hidden, password
+            $sortBy = ['file', 'select', 'checkbox', 'radio', 'textarea', 'submit'];
+        }
+        $elements = [];
+        foreach($this->form->elements as $properties) {
+            $type = strtolower($properties->type ?? 'text');
+            $i = array_search($type, $sortBy);
+            $elements[(false === $i) ? 'default' : $sortBy[$i]][] = $properties->content;
+        }
+        return $elements;
+    }
+    
     /**
      * Set FormBuilder form definitions.
      * @param stdClass  $formDefinition
@@ -216,62 +290,6 @@ class FormBuilder {
      * @return mixed
      * @throws \RuntimeException
      */
-    public function __get($name) {
-        if(! is_object($this->form)) {
-            $msg = "\$this->form property is not initialized";
-        }
-        elseif(isset($this->form->elements) && isset($this->form->elements[$name])) {
-            return $this->form->elements[$name];
-        }
-        elseif(isset($this->form->$name)) {
-            return $this->form->$name;
-        }
-        else {
-            $var = Types::getVarType($name);
-            $msg = "property/element '{$var}' not found";
-        }
-        $trace =  debug_backtrace();
-        if(isset($trace[0]) && isset($trace[0]['file'])) {
-            $file = $trace[0]['file'];
-            if(! empty($file)) {
-                $msg .= ' in file ' . $file;
-                if(! empty($trace[0]['line'])) {
-                    $msg .= ' line ' . $trace[0]['line'];
-                }
-            }
-        }
-        throw new \RuntimeException($msg, 255);
-        // throw new \RuntimeException($msg);
-    }
-
-    /**
-     * Sets a value in the '_properties' array referenced by '$name'.
-     * @param string $name Property key name.
-     * @param mixed  $val Property value.
-     * @return $this
-     * @throws \RuntimeException
-     */
-    public function __set($name, $val) {
-        if(! is_object($this->form)) {
-            $msg = "\$this->form property is not initialized";
-        }
-        elseif(isset($this->form->elements) && isset($this->form->elements[$name])) {
-            $this->form->elements[$name] = $val;
-            return $this;
-        }
-        else {
-            $var = Types::getVarType($name);
-            $msg = "property '{$var}' not found";
-        }
-        throw new \RuntimeException($msg);
-    }
-
-    /**
-     * Returns a value from the '_properties' array referenced by '$name'.
-     * @param string $name Property key name.
-     * @return mixed
-     * @throws \RuntimeException
-     */
     public function getScripts() {
         if(! is_object($this->form)) {
             $msg = "\$this->form property is not initialized";
@@ -422,6 +440,27 @@ class FormBuilder {
             $strVal = (string)$value;
             $checked = (false !== array_search($strVal, $strValues));
             $attributes['id'] = $elmName . '_' . ++$index;
+            if(! $checked) {
+                $attrChecked = $attributes['checked'] ?? null;
+                if($attrChecked) {
+                    if(is_string($attrChecked)) {
+                        $attrChecked = trim($attrChecked);
+                    }
+                    if(is_numeric($attrChecked)) {
+                        $isChecked = intval($attrChecked);
+                    }
+                    elseif(is_string($attrChecked)) {
+                        $lower = strtolower($attrChecked);
+                        $isChecked = 'true' === $lower || 'on' === $lower || 'checked' === $lower;
+                    }
+                    else {
+                        $isChecked = $attrChecked;
+                    }
+                    if($isChecked) {
+                        $checked = 'checked';
+                    }
+                }
+            }
             $formValues[$strVal] = $checked ? true : false;
             $labelAttributes = ['id' => $attributes['id'] . '_label', 'for' => $attributes['id']];
             $format = $formProperties->format ?? null;
@@ -499,143 +538,48 @@ class FormBuilder {
         }
         $formId = $formProperties->attributes['id'];
         $scripts = <<<EOD
-if(undefined !== jQuery) {
-    (function($) {
-        $('#{$formId}').submit(function(event) {
-            var numFiles = 0;
-            $("form").each(function() {
-                $(this).find("input[type='file']").each(function(){
-                    numFiles += parseInt($(this).get(0).files.length)
-                });
+    $('#{$formId}').submit(function(event) {
+        var numFiles = 0;
+        $("form").each(function() {
+            $(this).find("input[type='file']").each(function(){
+                numFiles += parseInt($(this).get(0).files.length)
             });
-            if(numFiles >= {$maxFileUploads}){
-                event.preventDefault();
-                var max = {$maxFileUploads};
-                max = max.toString();
-                $.submitCancelled = true;
-                alert(numFiles + ' is too many files to download. Download ' + max + ' files or less');
-                return false;
-            }
-            return true;
         });
-    })(jQuery);
-}
+        if(numFiles >= {$maxFileUploads}){
+            event.preventDefault();
+            var max = {$maxFileUploads};
+            max = max.toString();
+            $.submitCancelled = true;
+            alert(numFiles + ' is too many files to download. Download ' + max + ' files or less');
+            return false;
+        }
+        return true;
+    });
 EOD;
         if(false === strpos($formProperties->scripts, $scripts)) {
             $formProperties->scripts .= $scripts . "\n";
         }
 
-        $files = $_FILES ?? null;
-        if(! is_array($files) || ! count($files) || ! isset($files[$elmProperties->name])) {
-            $elmProperties->formvalue = [];
-            return;
+        // If $_FILES holds uploaded files process those files.
+        $upload = new Upload();
+        $fileList = $upload->assembleUploadedFiles();
+        $elmName = $elmProperties->name;
+        foreach($fileList as $key => $items) {
+            foreach($items as $item) {
+                /*
+                [name]         => (string) Chinese Balloon.jpg
+                [type]         => (string) image/jpeg
+                [size]         => (int) 21892
+                [tmp_name]     => (string) C:\Windows\Temp\phpDCE8.tmp
+                [error]        => (int) 0
+                [full_path]    => (string) Chinese Balloon.jpg
+                [errorMessage] => (string)
+                */        
+                $elmProperties->errors[$elmName]['error'] = [$item['error'] => $item['errorMessage']];
+            }
         }
-        // The possible properties in each file download.
-        /*
-            array(5) (
-              [name]     => (string) 2018-05-19 Contacts Tacoma Washington Bicycle Club.csv
-              [type]     => (string) application/octet-stream
-              [tmp_name] => (string) C:\Windows\Temp\php60F2.tmp
-              [error]    => (int) 0
-              [size]     => (int) 130214
-            )
-        */
-        $fileItems = [];
-        foreach($files as $name => $fileData) {
-            $fileItems[$name] = $this->_processFileProperties($fileData, $elmProperties);
-        }
-        $elmProperties->formvalue = $fileItems;
+        $elmProperties->formvalue = $fileList;
         return $this;
-    }
-
-    /**
-     *
-     * @param array     $fileData
-     * @param stdClass  $elmProperties
-     */
-    protected function _processFileProperties($fileData, $elmProperties) {
-        /*  The possible properties in each file download:
-            array(5) (
-              [name]     => (string) 2018-05-19 Contacts Tacoma Washington Bicycle Club.csv
-              [type]     => (string) application/octet-stream
-              [tmp_name] => (string) C:\Windows\Temp\php60F2.tmp
-              [error]    => (int) 0
-              [size]     => (int) 130214
-            )
-        */
-        $fileList = [];
-        foreach($fileData as $propName => $values) {
-            if(! is_array($values)) {
-                $values = [$values];
-            }
-            $index = 0;
-            foreach($values as $value) {
-                $fileList[$index++][$propName] = $value;
-            }
-        }
-        $errorList = [
-            // UPLOAD_ERR_OK Value 0 = no error
-            0 => 'The file is uploaded successfully.',
-            // UPLOAD_ERR_INI_SIZE Value 1 = The uploaded file exceeds the upload_max_filesize directive in php.ini.
-            1 => 'The uploaded file exceeds the maximim file size.',
-            // UPLOAD_ERR_FORM_SIZE Value 2 = The uploaded file exceeds the MAX_FILE_SIZE directive that was specified in the HTML form.
-            2 => 'The uploaded file exceeds the maximim file size.',
-            // UPLOAD_ERR_PARTIAL Value 3 = The uploaded file was only partially uploaded.
-            3 => 'The file download did not complete: the file was only partially downloaded.',
-            // UPLOAD_ERR_NO_FILE Value 4 = No file was uploaded. No file was selected using the file browse button.
-            4 => 'No file was selected using the file browse button.',
-            // UPLOAD_ERR_NO_TMP_DIR Value 6 = Missing a temporary folder.
-            6 => 'The temporary file download folder is missing.',
-            // UPLOAD_ERR_CANT_WRITE Value 7 = Failed to write file to disk.
-            7 => 'The file download did not complete: disk write failed.',
-            // UPLOAD_ERR_EXTENSION Value: 8; A PHP extension stopped the file upload. PHP does not provide a way to
-            // ascertain which extension caused the file upload to stop; examining the list of loaded extensions with phpinfo() may help.
-            8 => 'The file download stopped unexpectedly.',
-            // Value 99 = An unknown error code was submitted.
-            65535 => 'The file download did not complete: an unknown error code was submitted.',
-            65536 => "'tmp_name' file path property is missing from the file download.",
-            65537 => "file '%s' not found : file path does not exist",
-            65538 => "file '%s' is not readable"
-            ];
-        foreach($fileList as $key => $fileProperties) {
-            if(empty($fileProperties['name'])) {
-                $fileProperties['name'] = 'downloaded_file_' . ++$index;
-            }
-            if($this->debugMode) {
-                $keys = array_keys($errorList);
-                $fileProperties['error'] = $keys[mt_rand(0, count($keys) - 1)];
-            }
-            $errno = is_numeric($fileProperties['error']) ? intval($fileProperties['error']) : 0;
-            if(! isset($errorList[$errno])) {
-                $errno = 65535;
-            }
-            if(! $errno) {
-                $filename = $fileProperties['tmp_name'];
-                if(empty($filename)) {
-                    $errno = 65536;
-                }
-                elseif(! is_file($filename)) {
-                    $errno = 65537;
-                }
-                elseif(! is_readable($filename)) {
-                    $errno = 65537;
-                }
-            }
-            if($errno) {
-                $var = Types::getVartype($filename ?? '');
-                $errMsg = sprintf($errorList[$errno], $var);
-                if($this->debugMode) {
-                    $errMsg = "NOTICE: DEBUG MODE: random error generated in file '" . basename(__FILE__) . ": " . $errMsg;
-                }
-                $elmProperties->errors[$elmProperties->name]['error'] = [$errno => $errMsg];
-            }
-            else {
-                $errMsg = '';
-            }
-            $fileProperties['errorMessage'] = $errMsg;
-            $fileList[$key] = $fileProperties;
-        }
-        return $fileList;
     }
 
     /**
@@ -809,7 +753,7 @@ EOD;
      * @return boolean
      */
     public function isPost() {
-        return $this->form->isPost;
+        return $this->form ? ($this->form->isPost ?? false) : false;
     }
     
     /**

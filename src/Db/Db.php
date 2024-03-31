@@ -13,13 +13,16 @@ namespace Procomputer\WebApplicationFramework\Db;
  */
 
 use Procomputer\Pcclib\Types;
+use PDOStatement;
 /**
  * 
  */
 class Db {
-    const RGB_NAVY = '000080';
-    const RGB_BLACK = '000000';
-    const RGB_WHITE = 'ffffff';
+    /**
+     * 
+     * @var PDO
+     */
+    public $connection = null;
     
     /**
      * 
@@ -29,51 +32,26 @@ class Db {
     
     /**
      * 
-     * @var mysqli
-     */
-    public $connection = null;
-            
-    /**
-     * Connection dsn (data source name)
      * @var string
      */
-    protected $_dsn;
-
-    /**
-     * Connection username
-     * @var string
-     */
-    protected $_username;
-
-    /**
-     * Connection password
-     * @var string
-     */
-    protected $_password;
-
-    /**
-     * Connection database/dbName
-     * @var string
-     */
-    protected $_database;
-
-    /**
-     * Connection options
-     * @var array
-     */
-    protected $_options;
-
-    /**
-     * Driver name.
-     * @var string
-     */
-    protected $_driver = '(n/a)';
+    protected  $_dbConfig = [];
     
     /**
-     * Driver host name.
-     * @var string
+     * 
+     * @var array
      */
-    protected $_hostname = '';
+    protected $_defaultConfig = [
+        'host'     => '',
+        'username' => '',
+        'password' => '',
+        'dbname'   => '',
+        'port'     => 3306,
+        'charset'  => '',
+        'table'    => '',
+        'unix_socket' => '',
+        'dbprefix' => '',
+        'sitename' => ''
+    ];
     
     /**
      * 
@@ -89,25 +67,10 @@ class Db {
     /**
      * Ctor
      * 
-     * @param string $dsn
-     * @param string $username
-     * @param string $password
-     * @param string $database
-     * @param array $options
-     * @throws RuntimeException
+     * @param array  $dbConfig
      */
-    public function __construct(string $dsn, string $username, string $password, string $database = '', array $options = []) {
-        foreach(['dsn', 'username', 'password'] as $key) {
-            if(Types::isBlank($$key)) {
-                $msg = "{$key} parameter is empty; it is required.";
-                throw new \RuntimeException($msg);
-            }
-        }
-        $this->_dsn = $dsn;
-        $this->_username = $username;
-        $this->_password = $password;
-        $this->_database = $database;
-        $this->_options  = $options;
+    public function __construct(array $dbConfig) {
+        $this->_dbConfig = $dbConfig;
     }
 
     /**
@@ -115,104 +78,73 @@ class Db {
      * @return boolean Returns true/false for connect success.
      */
     public function connect() {
-        try {
-            if('mysqli' === $this->_dsn) {
-                $this->_driver = 'mysqli';
-                $this->_hostname = 'localhost';
-                $driver = new \mysqli();
-                $driver->connect('localhost', $this->_username, $this->_password, $this->_database);
-                if(! $driver->connect_errno) {
-                    $this->connection = $driver;
-                    return true;
-                }
-                $errorMsg = $driver->connect_errno . ': ' . (empty($driver->connect_error) ? "an unknown error occurred" : $driver->connect_error);
-            }
-            else {
-                $this->_driver = 'mysql';
-                $this->connection = new \PDO($this->_dsn, $this->_username, $this->_password, $this->_options); 
-                if(! empty($this->_database)) {
-                    $this->connection->query("use {$this->_database}");
-                }
-                return true;
-                /*
-                $result = $pdo->query("SELECT * FROM TABLES WHERE TABLE_SCHEMA='information_schema'");
-                $row = $result->fetch(PDO::FETCH_ASSOC);
-                */
-            }
-        } catch (\Throwable $ex) {
-            $errorMsg = "EXCEPTION: {$ex->getMessage()}";
+        $dsn = $this->_constructDsn($this->_dbConfig);
+        $this->connection = new \PDO($dsn, $this->_dbConfig['username'], $this->_dbConfig['password'], $this->_dbConfig['options'] ?? []); 
+        if(! empty($this->_dbConfig['dbname'])) {
+            $this->connection->query("use {$this->_dbConfig['dbname']}");
         }
-        $this->lastError = "ERROR: cannot connect PHP to MySQL database: " . $errorMsg;
-        return false;
-    }
-
-    public function getDsnDescriptionString($includePassword = false) {
-        $dsnDesc = $this->_driver .= ':' . $this->_username .= ':' . ($includePassword ? $this->_password : '(password_hidden)') . '@' 
-            . $this->_hostname . '/' . ($this->_database ?? $this->_username);
-        return $dsnDesc;
+        return true;
     }
 
     /**
-     * @param  $tableName   Table name.
-     * @param  $options     Options (optional)
+     * Prepares from a string SQL statement a PDOStatement object ready to execute.
+     * @param string $sql     SQL statement to prepare.
+     * @param array  $options (optional) Prepare options.
+     * @return PDOStatement Returns the PDOStatement or false on error
+     * @throws \Throwable
+     */
+    public function prepare(string $sql, array $options = []) {
+        if(! $this->connection) {
+            $this->connect();
+        }
+        $error = false;
+        try {
+            return $this->connection->prepare($sql, $options);
+        } catch (\Throwable $ex) {
+            $error = true;
+            $this->lasterror = $ex;
+            throw $ex;
+        }
+        finally {
+            if($error) {
+                $this->close();
+            }
+        }
+    }
+    
+    /**
+     * Prepares and executes an SQL statement.
+     * @param string $sql     SQL statement to execute.
+     * @param array  $params  (optional) Execution parameters.
+     * @param array  $options (optional) Prepare options.
+     * @return boolean Returns true if success else false.
+     * @throws \Throwable
+     */
+    public function exec(string $sql, array $params = null, array $options = []) {
+        $statement = $this->prepare($sql, $options);
+        return $statement->execute($params);
+    }
+    
+    /**
+     * Execute a database query on a SELECT type string SQL statement and returns rows.
+     * @param string $sql
+     * @param int    $mode    (optional) A 'PDO::FETCH_' mode constant.
+     * @param array  $options (optional) Options passed to prepare()
      * @return array|boolean
      */
-    public function fetch($tableName, array $options = []) {
-        $supportedOptions = array_merge($this->_allowedOptions, array_intersect_key(array_change_key_case($options), $this->_allowedOptions));
-        $sqlCols = Types::isBlank($supportedOptions['columns']) ? '*' : $supportedOptions['columns'];
-        $cols = is_array($sqlCols) ? ('`' . implode('`, `', $sqlCols) . '`') : $sqlCols;
-        $order = Types::isBlank($supportedOptions['order']) ? '' : (' ' . (string)$supportedOptions['order']);
-        $maxrows = Types::isBlank($supportedOptions['maxrows']) ? 0 : $supportedOptions['maxrows'];
-        $limit = '';
-        if(is_numeric($maxrows)) {
-            $maxrows = intval($maxrows);
-            if($maxrows > 0) {
-                $limit = ' LIMIT ' . $maxrows;
-            }
-        }
-        $sql = "SELECT {$cols} FROM `{$tableName}`{$order}{$limit}";
-        $allColumns = $this->query($sql);
-        if(! is_array($allColumns)) {
-            return false;
-        }
-        if(empty($allColumns)) {
-            // ERROR
-            $this->lastError = "An empty set of rows returned from table '{$tableName})";
-            return false;
-        }
-        if(is_array($sqlCols)) {
-            if(! empty($columns)) {
-                $combined = array_combine($sqlCols, $sqlCols);
-            }
-        }
-        $maxLength = is_numeric($supportedOptions['maxcolumnlength']) ? intval($supportedOptions['maxcolumnlength']) : 0;
-        if($maxLength < 1) {
-            $maxLength = 0;
-        }
-        $items = [];
-        foreach($allColumns as $key => $row) {
-            if(! $maxLength) {
-                $items[$key] = $row;
-                continue;
-            }
-            $rowArray = (array)$row;
-            array_walk($rowArray, function(&$val) use($maxLength) {
-                if(strlen($val) > $maxLength) {
-                    $val = substr($val, 0, $maxLength - 3) . '...';
-                }
-            });
-            $items[$key] = empty($combined) ? (object)$rowArray : (object)array_intersect_key($rowArray, $combined);
-        }
-        return $items;
+    public function query(string $sql, int $mode = \PDO::FETCH_ASSOC, array $options = []) {
+        $statement = $this->prepare($sql, $options);
+        $statement->execute();
+        return $statement->fetchAll($mode);
     }
     
     /**
      * Retuns the number of records in a table.
-     * @param  $tableName   Table name.
-     * @param  $options     (optional) Options 
+     * @param  string $tableName   Table name.
+     * @param  array $options     (optional) Options 
      * @return array|boolean
      */
-    public function count($tableName, array $options = []) {
+    public function count(string $tableName, array $options = []) {
         // $supportedOptions = array_merge($this->_allowedOptions, array_intersect_key(array_change_key_case($options), $this->_allowedOptions));
         $sql = "SELECT COUNT(*) FROM `{$tableName}`";
         $allColumns = $this->query($sql);
@@ -224,52 +156,18 @@ class Db {
             $this->lastError = "An empty set of rows returned from table '{$tableName})";
             return false;
         }
-        $row = reset($allColumns);
+        $row = reset((array)$allColumns);
         $return = intval(reset($row));
         return $return;
     }
     
     /**
-     * Execute a database query on a string SQL statement and return 
-     * @param string $sql
-     * @return array|boolean
+     * Close PDO connection
+     * @return self
      */
-    public function query($sql) {
-        if(! $this->connection && ! $this->connect()) {
-            return false;
-        }
-        try {
-        /*            
-         * query() returns false on failure. For successful SELECT, SHOW, DESCRIBE or EXPLAIN queries 
-         * mysqli_query() will return a mysqli_result object. For other successful queries mysqli_query() 
-         * will return true.            
-         */
-            $result = $this->connection->query($sql);
-            if(!$result) {
-                $this->lastError = $this->connection->errno . ': ' . $this->connection->error;
-                unset($result);
-            }
-        } catch (\Throwable $ex) {
-            $this->lastError = "EXCEPTION: {$ex->getMessage()}";
-        }
-        if(empty($result)) {
-            return false;
-        }
-        /** @var PDOStatement $result */
-        try {
-            $rows = [];
-            $method = 'fetchObject';
-            if(! method_exists($result, $method)) {
-                $method = 'fetch_object';
-            }
-            while($obj = $result->$method()) {
-                $rows[] = $obj;
-            }            
-            return $rows;
-        } catch (\Throwable $ex) {
-            $this->lastError = "EXCEPTION: {$ex->getMessage()}";
-        }
-        return false;
+    public function close() {
+        $this->connection = null;
+        return $this;
     }
     
     /**
@@ -298,7 +196,8 @@ class Db {
         }
         $return = [[],[]];
         foreach($rows as $row) {
-            $item = reset($row);
+            $a = (array)$row;
+            $item = reset($a);
             $index = ($prioritize && false !== array_search($item, $prioritize)) ? 0 : 1;
             $return[$index][] = $item;
         }
@@ -321,41 +220,34 @@ class Db {
     }
     
     /**
+     * Constructs the MySQL PDO DSN.
      *
-     * @param string|int $color      RGB Color specifier.
-     * @param boolean    $addPrefix  (optional) Add the leading '#' to the result
-     * 
-     * @return string
+     * @param mixed[] $params
      */
-    function getContrastColor($color, $addPrefix = false) {
-        // remove leading # and
-        $rgbColor = is_string($color) 
-            ? preg_replace('/^#+/', '', $color) 
-            : substr('000000' . dechex((int)$color), -6);
-        /**
-         * If RBG parse-able value determine the luminosity and select contrasting black or white.
-         */
-        if(preg_match('/^([a-fA-F0-9]{3}|[a-fA-F0-9]{6})$/', $rgbColor)) {
-            $rgb = [];
-            $len = strlen($rgbColor);
-            $incr = ($len < 6) ? 1 : 2;
-            for($i = 0; $i < $len; $i += $incr) {
-                $rgb[] = hexdec(substr($rgbColor, $i, $incr));
-            }
-            $squared_contrast = (
-                $rgb[0] * $rgb[0] * .299 +
-                $rgb[1] * $rgb[1] * .587 +
-                $rgb[2] * $rgb[2] * .114
-            );
-            $result = ($squared_contrast > pow(130, 2)) ? self::RGB_BLACK : self::RGB_WHITE;
+    private function _constructDsn(array $params): string
+    {
+        $dsn = 'mysql:';
+        if (isset($params['host']) && $params['host'] !== '') {
+            $dsn .= 'host=' . $params['host'] . ';';
         }
-        else {
-            // The 
-            $result = self::RGB_NAVY;
+
+        if (isset($params['port'])) {
+            $dsn .= 'port=' . $params['port'] . ';';
         }
-        if($addPrefix) {
-            $result = '#' . $result;
+
+        if (isset($params['dbname'])) {
+            $dsn .= 'dbname=' . $params['dbname'] . ';';
         }
-        return $result;
+
+        if (isset($params['unix_socket'])) {
+            $dsn .= 'unix_socket=' . $params['unix_socket'] . ';';
+        }
+
+        if (isset($params['charset'])) {
+            $dsn .= 'charset=' . $params['charset'] . ';';
+        }
+
+        return $dsn;
     }
+   
 }

@@ -169,6 +169,9 @@ class Bootstrap {
      * @return mixed Returns the default release.
      */
     public function releaseExists($release) {
-        return (is_numeric($release) && isset($this->getReleases()[(int)$release]));
+        if(! is_numeric($release)) {
+            return false;
+        }
+        return isset($this->_releases[(int)$release]);
     }
 }

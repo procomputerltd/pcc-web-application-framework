@@ -4,9 +4,12 @@ namespace Procomputer\WebApplicationFramework;
 use Procomputer\Pcclib\Types;
 use Procomputer\Pcclib\Html\Element;
 use Procomputer\WebApplicationFramework\CssFrameworks\CssFrameworks;
-use Procomputer\WebApplicationFramework\CssFrameworks\Menu;
+use Procomputer\WebApplicationFramework\CssFrameworks\Navbar;
 use Procomputer\WebApplicationFramework\Db\Db as AppDatabase;
 use Procomputer\WebApplicationFramework\Http;
+use Procomputer\WebApplicationFramework\Widgets\BusyIndicator;
+use Procomputer\WebApplicationFramework\Widgets\Clipboard;
+use ModernPHPException\ModernPHPException;
 
 /**
  * @method Application setRenderThisFile(string $arg)
@@ -31,7 +34,7 @@ class Application {
         'errorreporting' => E_ALL,
         'fontawesome' => false,
         'footer' => '',
-        'header' => '',
+        'brand' => '',
         'jqueryversion' => '3.6.0',
         'pagetitle' => '',
         'renderthisfile' => '',
@@ -58,13 +61,13 @@ class Application {
      * SimpleCollection object; storage for scripts.
      * @var SimpleCollection
      */
-    protected $_styles  ;
+    protected $_styles;
 
     /**
      * SimpleCollection object; storage for scripts.
      * @var SimpleCollection
      */
-    protected $_scripts  ;
+    protected $_scripts;
 
     /**
      *
@@ -74,43 +77,51 @@ class Application {
 
     /**
      *
-     * @var Procomputer\WebApplicationFramework\Db\Db
-     */
-    protected $_db;
-
-    /**
-     *
      * @var Procomputer\WebApplicationFramework\Http
      */
     protected $_http;
-    
-    /**
-     *
-     * @var Procomputer\WebApplicationFramework\CssFrameworks\Menu
-     */
-    protected $_menu;
-    
-    /**
-     *
-     * @param string $dsn
-     * @param string $username
-     * @param string $password
-     * @param array $options
-     * @return AppDatabase
-     */
-    public function db(string $dsn, string $username, string $password, string $database = '', array $options = []) {
-        if(! $this->_db) {
-            $this->_db = new AppDatabase($dsn, $username, $password, $database, $options);
-        }
-        return $this->_db;
-    }
 
+    /**
+     *
+     * @var Procomputer\WebApplicationFramework\CssFrameworks\Navbar
+     */
+    protected $_navbar;
+
+    /**
+     * BusyIndicator object.
+     * @var BusyIndicator
+     */
+    protected $_busyIndicator;
+
+    /**
+     * BusyIndicator object.
+     * @var Clipboard
+     */
+    protected $_clipboard;
+
+    protected $_redirect = false;
+    
+    /**
+     *
+     * @param array   $dbConfig  Configuration parameters.
+     * @return \Procomputer\WebApplicationFramework\Db\Db
+     * @throws \RuntimeException
+     */
+    public function db(array $dbConfig) {
+        return new AppDatabase($dbConfig);
+    }
+    
     /**
      * Ctor
      * @param array $options
      * @return void
      */
     public function __construct(array $options = []) {
+        if(class_exists('ModernPHPException\ModernPHPException')) {
+            $exc = new ModernPHPException(['title' => 'Pro Computer']);
+            $exc->start();
+        }
+
         /*
         E_ERROR             E_WARNING           E_PARSE             E_NOTICE
         E_CORE_ERROR        E_CORE_WARNING      E_COMPILE_ERROR     E_COMPILE_WARNING
@@ -154,6 +165,10 @@ class Application {
          */
         ob_start();
         register_shutdown_function(function() {
+            if($this->_redirect) {
+                ob_end_clean();
+                return;
+            }
             if($this->_options['renderthisfile']) {
                 $this->renderPhpFile($this->_options['renderthisfile']);
             }
@@ -310,7 +325,7 @@ EOD;
                     $properties[$propKey] = $scripts;
                     break;
                 default:
-                    // header
+                    // brand
                     // footer
                     $properties[$propKey] = $lcOptions[$propKey];
                 }
@@ -336,9 +351,9 @@ EOD;
         $options = $this->_options;
         $elm = new Element();
         // Add bootstrap CSS
-        // <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/css/bootstrap.css"
-        //   integrity="sha512-mG7Xo6XLlQ13JGPQLgLxI7bz8QlErrsE9rYQDRgF+6AlQHm9Tn5bh/vaIKxBmM9mULPC6yizAhEmKyGgNHCIvg=="
-        //   crossorigin="anonymous" referrerpolicy="no-referrer" rel="stylesheet"
+        // <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" 
+        //   integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" 
+        //  crossorigin="anonymous" referrerpolicy="no-referrer" />
         if(! Types::isBlank($options['cssframework']) && false !== $options['cssframework']) {
             $scriptArray[] = $this->cssFrameworks()->get($options['cssframework'])->getScript('css');
         }
@@ -389,9 +404,6 @@ table, td {
     border:thin solid silver;
     padding:.25em;
 }
-.content{
-    margin-top:2em
-}
 .message{
     background-color:red;
     color:white;
@@ -428,21 +440,21 @@ EOD, true);
 <body>
 
 EOD;
-        if(! empty($options['header'])) {
-            $return .= <<<EOD
-<!-- HEADING TITLE -->
-<div class="row bg-light"><div class="col-4 offset-4 text-center"><h2 class="text-center">{$options['header']}</h2></div></div>
-
-EOD;
+        $navbar = $this->navbar()->render($options);
+        if($navbar) {
+            $return .= $navbar;
         }
 
         if(! empty($options['wrapperclass'])) {
             $return .= <<<EOD
 <!-- BEGIN wrapper class {$options['wrapperclass']} -->
 <div class="{$options['wrapperclass']}">
-
 EOD;
-
+        }
+        
+        $messages = $this->getAllAlertsHtml();
+        if(! empty($messages)) {
+            $return .= $messages;
         }
         return $return;
     }
@@ -467,7 +479,19 @@ EOD;
 
 EOD;
         }
-        $scripts[] = $this->_getMsgBox();
+        /**
+         * Add the dialog widget.
+         */
+        $scripts[] = $this->_getDialogBox();
+
+        /**
+         * Add the clipboard widget JS if selectors are present.
+         */
+        $clipboard = $this->clipboard();
+        if($clipboard->getSelectorCount()) {
+            $this->scripts()->add($clipboard->getJsScript());
+        }
+
         $scriptFiles = [];
         $elm = new Element();
         if($options['jqueryversion']) {
@@ -493,7 +517,16 @@ EOD;
         if(! empty($options['scripts'])) {
             $this->scripts()->add($options['scripts']);
         }
-        $inlineScripts = "\n" . $elm->render('script', "\n$(function() {\n" . $this->scripts()->getString() . "\n});\n", ['type' => 'text/javascript'], true);
+        $script = <<<EOD
+
+if(undefined !== jQuery) {
+    (function($) {
+{$this->scripts()->getString()}
+    })(jQuery);
+};
+
+EOD;
+        $inlineScripts = "\n" . $elm->render('script', $script, ['type' => 'text/javascript'], true);
         $scripts[] = $inlineScripts;
 
         $scripts[] = "</body></html>";
@@ -502,13 +535,33 @@ EOD;
     }
 
     /**
+     * 
+     * @param string $url
+     */
+    public function redirect(string $url) {
+        $this->_redirect = true;
+        header('Location: ' . $url);
+    }
+    
+    /**
      * Returns boolen true or false for a value including string 'true' and 'false'
      * @param type $mixed
      * @return type
      */
-    protected function _getMsgBox() {
-        $this->scripts()->add(file_get_contents(__DIR__ . '/msgbox.js'));
+    protected function _getDialogBox() {
+        $this->scripts()->add(file_get_contents(__DIR__ . '/dialogBox.js'), false, true);
         return $this->renderPhpFile(__DIR__ . '/msgbox.phtml');
+    }
+
+    /**
+     * Returns the BusyIndicator object.
+     * @return BusyIndicator
+     */
+    public function busyIndicator() {
+        if(! isset($this->_busyIndicator)) {
+                $this->_busyIndicator = new BusyIndicator($this);
+        }
+        return $this->_busyIndicator;
     }
 
     /**
@@ -557,13 +610,20 @@ EOD;
 
     /**
      * Returns the css frameworks object.
-     * @return Menu
+     * @return Navbar
      */
-    public function menu() {
-        if(! isset($this->_menu)) {
-            $this->_menu = new Menu();
+    public function navbar() {
+        if(! isset($this->_navbar)) {
+            $this->_navbar = new Navbar();
         }
-        return $this->_menu;
+        return $this->_navbar;
+    }
+
+    public function clipboard() {
+        if(! isset($this->_clipboard)) {
+            $this->_clipboard = new Clipboard();
+        }
+        return $this->_clipboard;
     }
 
     /**

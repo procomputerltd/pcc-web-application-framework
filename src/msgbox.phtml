@@ -1,16 +1,16 @@
 <!-- PCC Message box popup html companion for msgbox javascript -->
-<div class="modal fade" id="pccMsgBox" tabindex="-1" aria-labelledby="pccPopupLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered" id="pccMsgBox-dialog">
+<div id="pcc-message-box" class="modal fade" tabindex="-1" aria-labelledby="pccPopupLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title fs-5" id="pccMsgBoxTitle"></h2>
-        <button type="button" class="btn-close close" data-bs-dismiss="modal" data-dismiss="modal" aria-label="Close"></button>
+        <h2 class="modal-title fs-5"></h2>
+        <button type="button" class="btn-close close" title="Close" data-bs-dismiss="modal" data-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div id="pccMsgBoxBody" class="modal-body">
+      <div class="modal-body">
       </div>
       <div class="modal-footer">
         <!-- Insert extra buttons/commands here -->
-        <button id="pccMsgBoxCloseText" type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-secondary modal-close" title="Close" data-bs-dismiss="modal" data-dismiss="modal">Close</button>
       </div>
     </div>
   </div>

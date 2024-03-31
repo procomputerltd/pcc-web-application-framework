@@ -11,8 +11,15 @@ namespace Procomputer\WebApplicationFramework;
  * A PARTICULAR PURPOSE. See the GNU General Public License 
  * for more details.
  */
+use Procomputer\WebApplicationFramework\Upload;
 
 class Http {
+
+    /**
+     * File upload class.
+     * @var Upload
+     */
+    protected $_upload = null;
     
     public function getState(string $name, mixed $type = INPUT_GET) {
         switch($type) {
@@ -38,6 +45,30 @@ class Http {
             }
         }
         return filter_input($filterType, $name) ;
+    }
+    
+    /**
+     * Resolves an absolute path that is relative to the home/root directory to a
+     * path relative to the DOCUMENT_ROOT directory.
+     * @param string $absolutePath The path to resolve
+     * @return string
+     */
+    public function resolvelocalUrl(string $absolutePath) {
+        $docRoot = filter_input(INPUT_SERVER, "DOCUMENT_ROOT");
+        if(! is_string($docRoot) || ! strlen(trim($docRoot))) {
+            return false;
+        }
+        $drPath = str_replace('\\', '/', $docRoot);
+        $absPath = $osAbsPath = str_replace('\\', '/', $absolutePath);
+        if($this->_isWinOs()) {
+            $osAbsPath = strtolower($osAbsPath);
+            $drPath = strtolower($drPath);
+        }
+        $pos = strpos($osAbsPath, $drPath);
+        if(0 !== $pos) {
+            return false;
+        }
+        return substr($absPath, strlen($drPath));
     }
     
     /**
@@ -93,6 +124,17 @@ class Http {
         return $url;
     }
 
+    /**
+     * Returns the Doanload class.
+     * @return Upload
+     */
+    public function upload() {
+        if(null === $this->_upload) {
+            $this->_upload = new Upload();
+        }
+        return $this->_upload;
+    }
+    
     public function getCookie(string $name, mixed $default = null) {
        $value = filter_input(INPUT_COOKIE, $name) ;
        return (null === $value) ? $default : $value;
@@ -134,4 +176,13 @@ class Http {
     protected function _createSessKey(string $name) {
         return md5($name . '_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $name));
     }
+    
+    /**
+     * Determines that the operating system is a Windos product.
+     * @return boolean
+     */
+    protected function _isWinOs() {
+        return (false !== strpos(strtolower(PHP_OS), "win"));
+    }
+    
 }
