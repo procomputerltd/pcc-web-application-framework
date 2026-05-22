@@ -17,7 +17,7 @@
         {"name": "James R. Steel", "email": "jim-steel@pccglobal.com"}
     ],
     "require": {
-        "php": ">=8.2.30"
+        "php": ">=8.2.30",
         "procomputer/pcc-lib": "dev-master"
     },
     "autoload": {
