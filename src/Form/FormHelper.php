@@ -11,18 +11,25 @@ namespace Procomputer\WebApplicationFramework\Form;
  * A PARTICULAR PURPOSE. See the GNU General Public License 
  * for more details.
  */
-use Procomputer\Pcclib\Types;
 use Procomputer\WebApplicationFramework\CommonUtilities;
+use Procomputer\Pcclib\Html\Common;
 
 class FormHelper {
 
     use CommonUtilities;
+
+    /**
+     * 
+     * @var Common
+     */
+    protected $_common;
     
     /**
      * Constructor
      * @param array $options (optional)
      */
     public function __construct(array $options = []) {
+        $this->_common = new Common();
         if(null!== $options) {
             $options = array_change_key_case($options);
             foreach($options as $k => $v) {
@@ -32,16 +39,16 @@ class FormHelper {
     }
     
     /**
-     * Callback on each element from from FormBuilder.
-     * @param stdClass $attributes      Element attributes object.
+     * Callback on each element from Form.
+     * @param FormElement $element      Element object.
      * @param stdClass $labelAttributes (optional) Label attributes object.
      */
-    public function formatFormElements(\stdClass $attributes, \stdClass $labelAttributes = null) {
-        $type = $attributes->type ?? null;
-        if(Types::isBlank($type)) {
-            $type = 'text';
+    public function formatFormElement(FormElement $element, \stdClass $labelAttributes = null) {
+        $attributes = $element->attributes()->getArrayCopy();
+        if(empty($attributes['class'])) {
+            $attributes['class'] = '';
         }
-        switch($type) {
+        switch(strtolower($element->type)) {
         case 'radio':
         case 'checkbox':
             /*
@@ -50,34 +57,20 @@ class FormHelper {
                 <label class="form-check-label" for="exampleCheck1">Check me out</label>
               </div>
              */
-            $attributes->class = $this->addValues($attributes->class ?? '', 'form-check-input');
+            $attributes['class'] = $this->_common->addClass($attributes['class'], 'form-check-input');
             if($labelAttributes) {
-                $labelAttributes->class = $this->addValues($labelAttributes->class ?? '', 'form-check-label');
+                $labelAttributes->class = $this->_common->addClass($labelAttributes->class ?? '', 'form-check-label');
             }
-            $attributes->wrapper = "<div class=\"form-check\">\n{{wrapper}}\n</div>";
+            $attributes['wrapper'] = "<div class=\"form-check\">\n{{wrapper}}\n</div>";
             break;
         case 'submit':
         case 'button':
-            $attributes->class = $this->addValues($attributes->class ?? '', ['btn', 'btn-primary']);
+            $attributes['class'] = $this->_common->addClass($attributes['class'], ['btn', 'btn-primary']);
             // <button type="submit" class="btn btn-primary">Submit</button>
             break;
         default: // text, hidden, select
-            $attributes->class = $this->addValues($attributes->class ?? '', 'form-control');
+            $attributes['class'] = $this->_common->addClass($attributes['class'], 'form-control');
         }
-    }
-    
-    protected function addValues($value, $add) {
-        $trimmed = trim($value);
-        $split = strlen($trimmed) ? preg_split('/\\s/', $trimmed) : [];
-        $lower = array_map('strtolower', $split);
-        foreach((array)$add as $val) {
-            if(is_string($val) && strlen($val = trim($val))) {
-                if(false === array_search(strtolower($val), $lower)) {
-                    $split[] = $val;
-                    $lower[] = $val;
-                }
-            }
-        }
-        return implode(' ', $split);
+        $element->attributes()->exchangeArray($attributes);
     }
 }

@@ -17,9 +17,13 @@ use Procomputer\Pcclib\Html\Element;
 class Select extends Element {
     
     public function renderHtml(array $values, array $attributes = [], array $options = []) {
-        $selected = isset($options['selected']) 
-            ? (is_array($options['selected']) ? $options['selected'] : [$options['selected'] => $options['selected']]) 
-            : [];
+        $selected = $options['selected'] ?? null; 
+        if($selected) {
+            $selected = is_array($selected) ? $selected : [$selected => $selected];
+        }
+        else {
+            $selected = [];
+        }
         if(empty($selected)) {
             $default = $options['default'] ?? null;
             if(null !== $default) {
