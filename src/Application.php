@@ -7,49 +7,46 @@ use Procomputer\WebApplicationFramework\CssFrameworks\CssFrameworks;
 use Procomputer\WebApplicationFramework\CssFrameworks\Navbar;
 use Procomputer\WebApplicationFramework\Db\Db as AppDatabase;
 use Procomputer\WebApplicationFramework\Http;
-use Procomputer\WebApplicationFramework\Widgets\BusyIndicator;
 use Procomputer\WebApplicationFramework\Widgets\Clipboard;
 use ModernPHPException\ModernPHPException;
+use RuntimeException;
 
 /**
- * @method Application setRenderThisFile(string $arg)
- * @method Application setPageTitle(string $arg)
- * @method Application setCssFramework(int $arg)
+ * @method Application setBrand(string $arg)
+ * @method Application setCssFramework(string $arg)
+ * @method Application setFontAwesome(boolean $arg)
+ * @method Application setFooter(string $arg)
  * @method Application setJqueryVersion(string $arg)
+ * @method Application setPageTitle(string $arg)
+ * @method Application setPrependScripts(boolean $arg)
+ * @method Application setRenderThisFile(string $arg)
+ * @method Application setSessionLifetime(int $arg)
  * @method Application setStartSession(boolean $arg)
- * @method Application setStyleSheets(array $arg)
- * @method Application setScripts(array $arg)
  * @method Application setWrapperClass(string $arg)
- * @method Application setWrapperWidth(string $arg)
- * @method Application setErrorReporting(int $arg)
- * @method Application setStyleSheetFiles(array $arg)
- * @method Application setScriptFiles(array $arg)
+ * @method Application setWrapperWidth(string|int $arg)
  */
 class Application {
 
     use CommonUtilities;
 
-    protected $_defaults = [
+    protected $_properties = [
+        'brand' => '',
         'cssframework' => 'bootstrap.5',
         'errorreporting' => E_ALL,
         'fontawesome' => false,
         'footer' => '',
-        'brand' => '',
         'jqueryversion' => '3.6.0',
         'pagetitle' => '',
+        'prependscripts' => true,
         'renderthisfile' => '',
-        'scriptfiles' => [],
-        'scripts' => [],
         'sessionlifetime' => 'auto', // auto = now until 09-Jan-2038
         'startsession' => true,
-        'stylesheetfiles' => [],
-        'stylesheets' => [],
         'wrapperclass' => '', // CSS class used in a DIV around the content. Normally 'container'
         'wrapperwidth' => '1720px',
         ];
 
     protected $_jqueryUrl = 'https://code.jquery.com/jquery-%s.js';
-    protected $_fontAwesomeUrl = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css';
+    protected $_fontAwesomeUrl = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css';
 
     /**
      * Application options.
@@ -61,13 +58,31 @@ class Application {
      * SimpleCollection object; storage for scripts.
      * @var SimpleCollection
      */
-    protected $_styles;
+    protected $_scripts;
 
     /**
-     * SimpleCollection object; storage for scripts.
+     * SimpleCollection object; storage for script files.
      * @var SimpleCollection
      */
-    protected $_scripts;
+    protected $_scriptFiles;
+
+    /**
+     * SimpleCollection object; storage for styles.
+     * @var SimpleCollection
+     */
+    protected $_styleSheets;
+
+    /**
+     * SimpleCollection object; storage for stylesheet files.
+     * @var SimpleCollection
+     */
+    protected $_styleSheetFiles;
+
+    /**
+     * SimpleCollection object; storage for modules.
+     * @var SimpleCollection
+     */
+    protected $_modules;
 
     /**
      *
@@ -88,24 +103,22 @@ class Application {
     protected $_navbar;
 
     /**
-     * BusyIndicator object.
-     * @var BusyIndicator
-     */
-    protected $_busyIndicator;
-
-    /**
-     * BusyIndicator object.
+     * Clipboard object.
      * @var Clipboard
      */
     protected $_clipboard;
 
+    /**
+     * Set true if a Location redirect header sent.
+     * @var bool
+     */
     protected $_redirect = false;
     
     /**
      *
      * @param array   $dbConfig  Configuration parameters.
      * @return \Procomputer\WebApplicationFramework\Db\Db
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function db(array $dbConfig) {
         return new AppDatabase($dbConfig);
@@ -117,32 +130,33 @@ class Application {
      * @return void
      */
     public function __construct(array $options = []) {
+        // Init the exception handler if it's declared.
         if(class_exists('ModernPHPException\ModernPHPException')) {
             $exc = new ModernPHPException(['title' => 'Pro Computer']);
             $exc->start();
         }
-
-        /*
-        E_ERROR             E_WARNING           E_PARSE             E_NOTICE
-        E_CORE_ERROR        E_CORE_WARNING      E_COMPILE_ERROR     E_COMPILE_WARNING
-        E_USER_ERROR        E_USER_WARNING      E_USER_NOTICE       E_STRICT
-        E_RECOVERABLE_ERROR E_DEPRECATED        E_USER_DEPRECATED   E_ALL
-        */
-        $errorReporting = $this->_defaults['errorreporting'] ?? null;
-        if(! is_numeric($errorReporting)) {
-            $errorReporting = E_ALL;
-        }
-        $errors = E_ERROR|E_WARNING|E_PARSE|E_NOTICE|E_CORE_ERROR|E_CORE_WARNING|E_COMPILE_ERROR|E_COMPILE_WARNING
-            |E_USER_ERROR|E_USER_WARNING|E_USER_NOTICE|E_STRICT|E_RECOVERABLE_ERROR;
-        if(E_ALL === $errorReporting || ($errorReporting & $errors)) {
-            ini_set('display_errors', 1);
-            ini_set('display_startup_errors', 1);
-        }
-        error_reporting($errorReporting);
-
+        
         if(! empty($options)) {
             $this->_parseOptions($options);
         }
+        
+        // Set the error reporting.
+        $bitFlags = $this->setErrorReporting($this->_options['errorreporting']);
+        // The following checks for E_ALL while excluding E_DEPRECATED, E_USER_DEPRECATED, E_ALL
+        $errors = E_ERROR|E_WARNING|E_PARSE|E_NOTICE|E_CORE_ERROR|E_CORE_WARNING|E_COMPILE_ERROR|E_COMPILE_WARNING
+            |E_USER_ERROR|E_USER_WARNING|E_USER_NOTICE|E_STRICT|E_RECOVERABLE_ERROR;
+        if(E_ALL === $bitFlags || ($bitFlags & $errors)) {
+            ini_set('display_errors', 1);
+            ini_set('display_startup_errors', 1);
+        }
+        // If php.ini has error_reporting set non-zero and headers are already sent an error 
+        // may have been trigerred and output started before the session handler was started.
+        if(headers_sent()) {
+            $er = error_get_last();
+            $msg = is_array($er) ? ($er['message'] ?? '') : '';
+            exit(($msg && preg_match('/file\\s+uploads.*exceeded/', strtolower($msg))) ? "Upload fewer files" : "Cannot continue: {$msg}}");
+        }
+        
         if($this->_options['startsession']) {
             // Expire on 09-Jan-2038 See: https://en.wikipedia.org/wiki/Year_2038_problem
             $value = $this->_options['sessionlifetime'] ?? null;
@@ -160,11 +174,13 @@ class Application {
             }
             $this->_startSession();
         }
+        
         /**
          * Start output buffer to capture content generated.
          */
         ob_start();
         register_shutdown_function(function() {
+            // Skip output if a Location redirect() was called.
             if($this->_redirect) {
                 ob_end_clean();
                 return;
@@ -188,19 +204,28 @@ class Application {
     }
 
     /**
+     * 
+     * @param int $bitFlags One or more 'E_*' constants OR'd.
+     * @return int Returns the previous error reporting.
+     */
+    public function setErrorReporting(int $bitFlags) {
+        return error_reporting($bitFlags);
+    }
+    
+    /**
      * Set an option
      * @param string $name
      * @param mixed  $args
      * @return $this
      * @throws RuntimeException
      */
-    public function __call($name, $args) {
+    public function __call(string $name, mixed $args): mixed {
         $l = strlen($name);
         if($l > 3) {
             $set = 'set' === substr($name, 0, 3);
             if($set || ('get' === substr($name, 0, 3))) {
                 $property = strtolower(substr($name, 3));
-                if(isset($this->_defaults[$property])) {
+                if(array_key_exists($property, $this->_properties)) {
                     if($set) {
                         $this->_options[$property] = (is_array($args) && count($args)) ? reset($args) : $args;
                         return $this;
@@ -209,7 +234,7 @@ class Application {
                 }
             }
         }
-        throw new \RuntimeException("In " . __CLASS__ . "::__call(): method not found: '{$name}'");
+        throw new RuntimeException("In " . __CLASS__ . "::__call(): method not found: '{$name}'");
     }
 
     /**
@@ -267,13 +292,13 @@ EOD;
      * Parses options passed to this object.
      * @param array $options
      * @return $this;
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
-    protected function _parseOptions($options) {
+    protected function _parseOptions(array $options = []) {
 
-        $lcOptions = (null === $options) ? [] : array_change_key_case((array)$options);
+        $lcOptions = array_change_key_case($options);
 
-        $properties = $this->_defaults;
+        $properties = $this->_properties;
         foreach($properties as $propKey => $value) {
             if(isset($lcOptions[$propKey])) {
                 switch($propKey) {
@@ -309,20 +334,10 @@ EOD;
                                 $properties[$propKey] = false;
                                 break;
                             default:
-                                throw new \RuntimeException("Bad property specified for property '{$propKey}'");
+                                throw new RuntimeException("Bad property specified for property '{$propKey}'");
                             }
                         }
                     }
-                    break;
-                case 'stylesheets':
-                case 'scripts':
-                    $scripts = [];
-                    foreach((array)$lcOptions[$propKey] as $val) {
-                        if(! Types::isBlank($val)) {
-                            $scripts[] = $val;
-                        }
-                    }
-                    $properties[$propKey] = $scripts;
                     break;
                 default:
                     // brand
@@ -337,7 +352,7 @@ EOD;
 
         if(count($lcOptions)) {
             $keys = implode(", ", array_keys($lcOptions));
-            throw new \RuntimeException("Unrecognized option(s) '{$keys}'");
+            throw new RuntimeException("Unrecognized option(s) '{$keys}'");
         }
         return $this;
     }
@@ -350,13 +365,13 @@ EOD;
         $scriptArray = [];
         $options = $this->_options;
         $elm = new Element();
-        // Add bootstrap CSS
-        // <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" 
-        //   integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" 
-        //  crossorigin="anonymous" referrerpolicy="no-referrer" />
+        /**
+         * Add bootstrap CSS url.
+         */
         if(! Types::isBlank($options['cssframework']) && false !== $options['cssframework']) {
             $scriptArray[] = $this->cssFrameworks()->get($options['cssframework'])->getScript('css');
         }
+        // Add fontawesome url
         if(! Types::isBlank($options['fontawesome'])) {
             $value = $options['fontawesome'];
             $include = true;
@@ -386,9 +401,12 @@ EOD;
                 $scriptArray[] = $elm->render('link', '', $attr);
             }
         }
-
+        
+        /**
+         * Add stylesheet urls.
+         */
         $index = 0;
-        foreach((array)$options['stylesheetfiles'] as $file) {
+        foreach($this->stylesheetFiles() as $file) {
             if(! preg_match('~^<link.*/>~i', $file)) {
                 $attr['id'] = 'style-link-' . ++$index;
                 $attr['href'] = $file;
@@ -398,8 +416,12 @@ EOD;
         }
         $styleSheetFiles = implode("\n", $scriptArray);
 
-        $styles = $this->styles();
-        $styles->add(<<<EOD
+        /**
+         * Add CSS stylesheets.
+         */
+        $styles = $this->stylesheets();
+        // Add some custom default styles.
+        $css = <<<EOD
 table, td {
     border:thin solid silver;
     padding:.25em;
@@ -423,11 +445,19 @@ table, td {
 .container {
     max-width:{$options['wrapperwidth']};
 }
-EOD, true);
-        if(! empty($options['stylesheets'])) {
-            $styles->add($options['stylesheets']);
+EOD;
+        $styles->add($css, ['noDuplicates' => true]);
+        $styleScripts = implode("\n", $styles->getArrayCopy());
+        $styleSheets = "\n<style>\n{$styleScripts}\n</style>";
+
+        $element = new Element();
+        $elmArray = [];
+        foreach($this->scripts() as $k => $attributes) {
+            if(is_array($attributes)) {
+                $elmArray[] = $element('script', '', $attributes, true);
+            }
         }
-        $styleSheets = "\n<style>\n{$styles->getString()}\n</style>";
+        $elements = implode("\n", $elmArray);
 
         $return = <<<EOD
 <!doctype html>
@@ -435,6 +465,7 @@ EOD, true);
 <head>
 <meta charset="utf-8" />
 <title>{$options['pagetitle']}</title>
+{$elements}
 {$styleSheetFiles}{$styleSheets}
 </head>
 <body>
@@ -465,24 +496,20 @@ EOD;
      */
     public function getHtmlTail() {
         $options = $this->_options;
-        $scripts = [];
+        $htmlScripts = [];
 
         if(! empty($options['wrapperclass'])) {
-            $scripts[] = "</div>\n<!-- END wrapper class {$options['wrapperclass']} -->\n";
+            $htmlScripts[] = "</div>\n<!-- END wrapper class {$options['wrapperclass']} -->\n";
         }
 
         if(! empty($options['footer'])) {
-            $scripts[] = <<<EOD
+            $htmlScripts[] = <<<EOD
 <!-- START Footer -->
 <div class="footer-copyright text-center p-4 bg-light text-muted">{$options['footer']}</div>
 <!-- END Footer -->
 
 EOD;
         }
-        /**
-         * Add the dialog widget.
-         */
-        $scripts[] = $this->_getDialogBox();
 
         /**
          * Add the clipboard widget JS if selectors are present.
@@ -492,45 +519,65 @@ EOD;
             $this->scripts()->add($clipboard->getJsScript());
         }
 
+        /**
+         * Add javascript files.
+         */
         $scriptFiles = [];
         $elm = new Element();
+        /**
+         * Add jquery references.
+         */
         if($options['jqueryversion']) {
             $url = sprintf($this->_jqueryUrl, $options['jqueryversion']);
-            $scriptFiles[] = $elm->render('script', '', ['type' => 'text/javascript', 'src' => $url], true);
+             // Note: JavaScript is assumed; don't include 'type'=>'text/javascript'
+            $scriptFiles[] = $elm->render('script', '', ['src' => $url], true);
         }
-        foreach((array)$options['scriptfiles'] as $fileSpec) {
+        foreach($this->scriptfiles() as $fileSpec) {
             if($fileSpec && 'none' !== strtolower($fileSpec)) {
                 if(! preg_match('~^<script.*</script>~i', $fileSpec)) {
-                    $fileSpec = $elm->render('script', '', ['type' => 'text/javascript', 'src' => $fileSpec], true);
+                     // Note: JavaScript is assumed; don't include 'type'=>'text/javascript'
+                    $fileSpec = $elm->render('script', '', ['src' => $fileSpec], true);
                 }
                 $scriptFiles[] = $fileSpec;
             }
         }
-        // Add bootstrap JS
-        // <script src="https://cdn.jsdelivr. . . .min.js" integrity="sha384" crossorigin="anonymous"></script>
+        /**
+         * Add bootstrap JS
+         */
         if($options['cssframework']) {
             $parts = explode('.', $options['cssframework']);
             $scriptFiles[] = $this->cssFrameworks()->get($parts[0])->getScript('js', $parts[1]);
         }
-        $scripts[] = implode("\n", $scriptFiles);
+        $htmlScripts[] = implode("\n", $scriptFiles);
 
-        if(! empty($options['scripts'])) {
-            $this->scripts()->add($options['scripts']);
+        /*
+         * |--------------------------------------------------------------------
+         * | The javascripts
+         * |--------------------------------------------------------------------
+         * |
+         * | Defer all javascript execution until the document is 'ready' using  $(function(){ 
+         * |
+         */
+        $jsScripts = [];
+        foreach($this->scripts() as $k => $v) {
+            if(! is_array($v)) {
+                $jsScripts[] = $v;
+            }
         }
+        $jScripts = implode("\n", $jsScripts);
         $script = <<<EOD
-
-if(undefined !== jQuery) {
-    (function($) {
-{$this->scripts()->getString()}
-    })(jQuery);
-};
+                
+$(function(){
+{$jScripts}
+});
 
 EOD;
-        $inlineScripts = "\n" . $elm->render('script', $script, ['type' => 'text/javascript'], true);
-        $scripts[] = $inlineScripts;
+         // Note: JavaScript is assumed; don't include 'type'=>'text/javascript'
+        $inlineScripts = "\n" . $elm->render('script', $script, [], true);
+        $htmlScripts[] = $inlineScripts;
 
-        $scripts[] = "</body></html>";
-        $return = implode("\n", $scripts);
+        $htmlScripts[] = "</body></html>";
+        $return = implode("\n", $htmlScripts);
         return $return;
     }
 
@@ -544,35 +591,25 @@ EOD;
     }
     
     /**
-     * Returns boolen true or false for a value including string 'true' and 'false'
-     * @param type $mixed
-     * @return type
+     * Returns the styles collection object.
+     * @return SimpleCollection
      */
-    protected function _getDialogBox() {
-        $this->scripts()->add(file_get_contents(__DIR__ . '/dialogBox.js'), false, true);
-        return $this->renderPhpFile(__DIR__ . '/msgbox.phtml');
-    }
-
-    /**
-     * Returns the BusyIndicator object.
-     * @return BusyIndicator
-     */
-    public function busyIndicator() {
-        if(! isset($this->_busyIndicator)) {
-                $this->_busyIndicator = new BusyIndicator($this);
+    public function stylesheets() {
+        if(! isset($this->_styleSheets)) {
+            $this->_styleSheets = new SimpleCollection();
         }
-        return $this->_busyIndicator;
+        return $this->_styleSheets;
     }
 
     /**
      * Returns the styles collection object.
      * @return SimpleCollection
      */
-    public function styles() {
-        if(! isset($this->_styles)) {
-            $this->_styles = new SimpleCollection();
+    public function stylesheetFiles() {
+        if(! isset($this->_styleSheetFiles)) {
+            $this->_styleSheetFiles = new SimpleCollection();
         }
-        return $this->_styles;
+        return $this->_styleSheetFiles;
     }
 
     /**
@@ -584,6 +621,37 @@ EOD;
             $this->_scripts = new SimpleCollection();
         }
         return $this->_scripts;
+    }
+
+    /**
+     * Returns the scripts collection object.
+     * @return SimpleCollection
+     */
+    public function scriptfiles() {
+        if(! isset($this->_scriptFiles)) {
+            $this->_scriptFiles = new SimpleCollection();
+        }
+        return $this->_scriptFiles;
+    }
+
+    /**
+     * ALIAS of stylesheets()
+     * Returns the styles collection object.
+     * @return SimpleCollection
+     */
+    public function styles() {
+        return $this->stylesheets();
+    }
+
+    /**
+     * Returns the modules collection object.
+     * @return SimpleCollection
+     */
+    public function modules() {
+        if(! isset($this->_modules)) {
+            $this->_modules = new SimpleCollection();
+        }
+        return $this->_modules;
     }
 
     /**
@@ -650,17 +718,5 @@ EOD;
             $sessionActive = (session_status() === PHP_SESSION_ACTIVE || session_start());
             return $sessionActive ? true : false;
         }
-    }
-
-    /**
-     * Returns boolen true or false for a value including string 'true' and 'false'
-     * @param type $mixed
-     * @return type
-     */
-    protected function _getBoolVal($mixed) {
-        if(Types::isBool($mixed)) {
-            return Types::boolVal($mixed);
-        }
-        return (is_string($mixed) && 'true' === strtolower(strval($mixed))) ? true : false;
     }
 }

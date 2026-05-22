@@ -18,6 +18,7 @@ use Procomputer\Pcclib\Html\Element;
 use Procomputer\Pcclib\Messages\Messages;
 use Procomputer\Pcclib\Messages\Message;
 use Procomputer\Pcclib\Messages\MessageStore;
+use Procomputer\Pcclib\Types;
 
 use JsonSerializable;
 use Traversable;
@@ -30,17 +31,6 @@ trait CommonUtilities {
     public $indent = 0;
     public $cssFrameworkRelease = 5;
 
-    protected $_alertClasses = [
-        'primary',
-        'secondary',
-        'success',
-        'danger',
-        'warning',
-        'info',
-        'light',
-        'dark'
-    ];
-    
     /**
      * Get alert dialog box HTML.
      * @return string
@@ -81,7 +71,7 @@ trait CommonUtilities {
         $messageList = [];
         foreach($messages as $class => $alerts) {
             foreach($alerts as $title => $messages) {
-                $alert = $element->render('strong', $title, [], true) . '<br />';
+                $alert = $element->render('strong', $this->_resolveTitle($title, $class), [], true) . '<br />';
                 $attributes = ['class' => "alert alert-{$class} alert-dismissible", 'role' => 'alert'];
                 $messageList[] = $div->render($alert . $buttonHtml . implode("<br>\n", (array)$messages), $attributes);
             }
@@ -145,7 +135,12 @@ trait CommonUtilities {
      * @return string
      */
     public function getAllAlertsHtml(bool $clearEnqueuedMessages = true) : string {
-        $messages = $this->messageStore()->merge($this->getEnqueuedMessages($clearEnqueuedMessages))->toArray();
+        $messageStore = $this->messageStore();
+        $enqueued = $this->getEnqueuedMessages($clearEnqueuedMessages);
+        if($enqueued->getMessageCount()) {
+            $messageStore->merge($enqueued);
+        }
+        $messages = $messageStore->toArray();
         // $storage[$class][$title][] = $messages;
         foreach($messages as $class => $titles) {
             foreach($titles as $title => $msg) {
@@ -158,6 +153,27 @@ trait CommonUtilities {
             }
         }
         return $this->getMessagesHtml($messages);
+    }
+    
+    protected function _resolveTitle(string $title, mixed $class) {
+        if(is_string($title) && ! Types::isBlank($title)) {
+            return ucfirst(trim($title));
+        }
+        if(is_numeric($class)) {
+            $class = intval($class);
+        }
+        if(! is_string($class)) {
+            return $class ? 'Error' : 'Message';
+        }
+        switch(strtolower($class)) {
+            case 'danger':
+                return 'Error';
+            case 'success':
+            case 'warning':
+                return ucfirst($class);
+            default:
+                return 'Message';
+        }
     }
     
     /**
@@ -207,40 +223,6 @@ trait CommonUtilities {
         return ob_get_clean();
     }
 
-    public function addLastPhpErrorAlert(string $default = 'unknown error') {
-        $msg = $this->getLastPhpErrorMessage($default);
-        $this->addAlert($msg, 'danger');
-        return $this;
-    }
-    
-    /**
-     * Sets the last PHP error info to $this->lastError
-     * @param string $default
-     * @return string
-     */
-    public function getLastPhpErrorMessage(string $default = 'unknown error') {
-        /*  
-        [type] => 8
-        [message] => Undefined variable: a
-        [file] => C:\WWW\index.php
-        [line] => 2
-        */        
-        $lastError = error_get_last();
-        $msg = $lastError['message'] ?? null;
-        if(empty($msg)) {
-            $msg = $default;
-        }
-        $file = $lastError['file'] ?? null;
-        if(! empty($file)) {
-            $msg .= ' in file ' . $file;
-        }
-        $line = $lastError['line'] ?? null;
-        if(! empty($line)) {
-            $msg .= '(' . $line . ')';
-        }
-        return $msg;
-    }
-    
     /**
      * Results array of items from Collection or Arrayable.
      *

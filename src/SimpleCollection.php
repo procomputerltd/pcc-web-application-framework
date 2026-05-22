@@ -11,79 +11,75 @@ namespace Procomputer\WebApplicationFramework;
  * A PARTICULAR PURPOSE. See the GNU General Public License 
  * for more details.
  */
+use ArrayIterator;
+use ArrayObject;
+
 /**
  * As the name implise, a simple array collection object.
  */
-class SimpleCollection {
+class SimpleCollection extends ArrayObject {
     
-    /**
-     * 
-     * @var \ArrayObject
-     */
-    protected $_storage;
-    
-    /**
-     * Ctor.
-     */
-    public function __construct() {
-        $this->_storage = new \ArrayObject();
+    public function __construct(array|object $array = [], int $flags = 0, string $iteratorClass = ArrayIterator::class) {
+        parent::__construct($array, ArrayObject::ARRAY_AS_PROPS, $iteratorClass);
     }
-
+    
     /**
      * Adds an item to the collection.
-     * @param array|string|Traversable $data          Data to add.
-     * @param bool                     $omitDuplicate Omit duplicate value(s).
-     * @param bool                     $prepend       Prepend the data to the collection.
+     * @param string|iterable $data    Data to add.
+     * @param array           $options (optional)  (bool) noDuplicate: omit duplicate value(s), (bool) prepend: prepend the data to the collection.
      * @return $this
      */
-    public function add($data, bool $omitDuplicate = false, bool $prepend = false) {
-        $array = $this->_getArrayableItems($data);
-        $omit = false;
-        foreach($array as $value) {
-            if($omitDuplicate) {
-                $omit = false;
-                foreach($this->_storage as $existing) {
-                    if($value === $existing) {
-                        $omit = true;
-                        break;
-                    }
+    public function add(string|iterable $data, array $options = []) {
+        $lcOptions = array_change_key_case($options);
+        $prepend = $lcOptions['prepend'] ?? false;
+        if(! is_string($data)) {
+            if(is_array($data)) {
+                $attributes = $data;
+            }
+            else {
+                // To array.
+                $attributes = [];
+                foreach($data as $k => $v) {
+                    $attributes[$k] = $v;
                 }
             }
-            if(! $omit) {
-                $c = $this->_storage->count();
-                if($prepend && $c) {
-                    for(; $c > 0; $c--) {
-                        $this->_storage->offsetSet($c, $this->_storage->offsetGet($c - 1));
+            $c = $this->count();
+            if($prepend && $c) {
+                for(; $c > 0; $c--) {
+                    $this->offsetSet($c, $this->offsetGet($c - 1));
+                }
+            }
+            $this->offsetSet($c, $attributes);
+        }
+        else {
+            $array = $this->_getArrayableItems($data);
+            $omitDuplicate = $lcOptions['noduplicate'] ?? false;
+            $omit = false;
+            foreach($array as $value) {
+                if(! is_string($value) || ! strlen(trim($value))) {
+                    continue;
+                }
+                if($omitDuplicate) {
+                    $omit = false;
+                    foreach($this as $existing) {
+                        if($value === $existing) {
+                            $omit = true;
+                            break;
+                        }
                     }
                 }
-                $this->_storage->offsetSet($c, $value);
+                if(! $omit) {
+                    $c = $this->count();
+                    if($prepend && $c) {
+                        for(; $c > 0; $c--) {
+                            $this->offsetSet($c, $this->offsetGet($c - 1));
+                        }
+                    }
+                    $this->offsetSet($c, $value);
+                }
             }
         }
         return $this;
-    }
-    
-    /**
-     * Returns the collection items joined into a string.
-     * @return string
-     */
-    public function getString() : string {
-        return implode("\n", $this->_storage->getArrayCopy());
-    }
-    
-    /**
-     * Returns the collection in a PHP array.
-     * @return array
-     */
-    public function getArray() : array {
-        return $this->_storage->getArrayCopy();
-    }
-    
-    /**
-     * Returns the collection ArrayObject.
-     * @return \ArrayObject
-     */
-    public function get() : \ArrayObject {
-        return $this->_storage;
     }
     
     /**
@@ -110,5 +106,4 @@ class SimpleCollection {
 
         return (array) $items;
     }
-
 }

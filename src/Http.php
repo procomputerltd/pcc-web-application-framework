@@ -11,7 +11,7 @@ namespace Procomputer\WebApplicationFramework;
  * A PARTICULAR PURPOSE. See the GNU General Public License 
  * for more details.
  */
-use Procomputer\WebApplicationFramework\Upload;
+use Procomputer\Pcclib\Http\Upload;
 
 class Http {
 
@@ -25,20 +25,18 @@ class Http {
         switch($type) {
         case INPUT_GET:
         case INPUT_POST:
-        case INPUT_REQUEST:
+        // case INPUT_REQUEST:
             $filterType = $type;
             break;
         default:
             $s = strtolower(strval($type));
             switch($s) {
             case 'get':
+            case 'request':
                 $filterType = INPUT_GET;
                 break;
             case 'post':
                 $filterType = INPUT_POST;
-                break;
-            case 'request':
-                $filterType = INPUT_REQUEST;
                 break;
             default:
                 $filterType = null;
