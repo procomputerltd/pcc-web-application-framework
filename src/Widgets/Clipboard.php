@@ -14,7 +14,7 @@ namespace Procomputer\WebApplicationFramework\Widgets;
 class Clipboard {
     
     /**
-     * BusyIndicator scripts are added to the application;
+     * Clipboard scripts are added to the application;
      * @var bool
      */
     protected $_inited = false;
@@ -86,49 +86,56 @@ class Clipboard {
         foreach($this->_selectors as $action => $selectors) {
             $jqSelectors = implode(',', $selectors); 
             $scripts[] = <<<EOD
-$('{$jqSelectors}').{$action}(function(){
-    var res = copyToClipboard(this);{$callbacks}
-})
+    if(undefined !== jQuery) {            
+        jQuery('{$jqSelectors}').{$action}(function(){
+            var res = copyToClipboard(this);{$callbacks}
+        })
+    }
 EOD;
         $combined = implode("\n", $scripts);
         }
         return <<<EOD
         
-    copyToClipboard = function(element) {
-        let attr = 'data-target', val, elm, text, temp, res;
-        elm = $(element);
-        if(! elm || ! elm.length) {
-            console.warn("copy-clipboard() failed. Element parameter is not a valid element");
-            return false;
+    if(undefined === jQuery) {            
+        if(undefined !== console) {
+            console.warn('In class Clipboard: jQuery library not found.');
         }
-        val = elm.attr(attr);
-        if(! val || ! val.length) {
-            console.warn('copy-clipboard(): "' + attr + '" attribute not found.');
-            return false;
-        }
-        elm = $('#' + val);
-        if(! elm.length) {
-            console.warn('copy-clipboard(): element "' + val + '" targeted by "data-target" attribute not found.');
-            return false;
-        }
-        text = elm.val();
-        if('string' !== typeof text || ! text.length) {
+    }
+    else {    
+        copyToClipboard = function(element) {
+            let attr = 'data-target', val, elm, text, temp, res;
+            elm = jQuery(element);
+            if(! elm || ! elm.length) {
+                console.warn("copy-clipboard() failed. Element parameter is not a valid element");
+                return false;
+            }
+            val = elm.attr(attr);
+            if(! val || ! val.length) {
+                console.warn('copy-clipboard(): "' + attr + '" attribute not found.');
+                return false;
+            }
+            elm = jQuery('#' + val);
+            if(! elm.length) {
+                console.warn('copy-clipboard(): element "' + val + '" targeted by "data-target" attribute not found.');
+                return false;
+            }
             text = elm.val();
             if('string' !== typeof text || ! text.length) {
-                text = elm.html();
+                text = elm.val();
+                if('string' !== typeof text || ! text.length) {
+                    text = elm.html();
+                }
+            }
+            temp = jQuery("<input>");
+            jQuery("body").append(temp);
+            temp.val(text).select();
+            res = document.execCommand("copy");
+            temp.remove();
+            if(res) {
+                return text;
             }
         }
-        temp = $("<input>");
-        $("body").append(temp);
-        temp.val(text).select();
-        res = document.execCommand("copy");
-        temp.remove();
-        if(res) {
-            return text;
-        }
-        console.warn('copy-clipboard() failed on element "' + val + '" targeted by "data-target".');
-        return false;
-    }
+    }    
     {$combined}
 EOD;
     }
