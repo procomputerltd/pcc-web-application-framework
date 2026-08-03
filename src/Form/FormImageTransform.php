@@ -20,13 +20,18 @@ class FormImageTransform {
     
     use Messages;
     
+    protected $_logging = false;
+    
     /**
      * Constructor
      * @param array $files Array of HttpFile objects.
      */
-    public function __construct(?array $files = null) {
-        if(is_array($files)) {
-            $this->getImages($files);
+    public function __construct(array $options = []) {
+        if(isset($options['logging'])) {
+            $this->_logging = (bool)$options['logging'];
+        }
+        if(isset($options['files'])) {
+            $this->getImages($options['files']);
         }
     }
     
@@ -44,7 +49,7 @@ class FormImageTransform {
             $image = $upload->getProperty('image');
             if(! empty($image)) {
                 try {
-                    $newImageFile = $this->resizeImage($upload, $destFolder, $transformOptions);
+                    $newImageFile = $this->resizeImage($image, $destFolder, $transformOptions);
                 } catch (Throwable $exc) {
                     $msg = $exc->getMessage();
                     $this->addMessage($msg);
